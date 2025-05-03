@@ -1,0 +1,159 @@
+!pip install deepface
+
+!pip install opencv-python
+
+!pip install deepface opencv-python
+
+!pip install pytube
+
+from IPython.display import display, Javascript, HTML
+from google.colab.output import eval_js
+from base64 import b64decode
+import cv2
+import numpy as np
+from deepface import DeepFace
+from google.colab.patches import cv2_imshow
+import time
+from statistics import mode
+from collections import Counter
+import matplotlib.pyplot as plt
+import random
+from pytube import Search
+import ipywidgets as widgets
+from IPython.display import clear_output
+
+# for webBrows- javascript Webcam
+def take_photo(filename='photo.jpg', quality=0.8):
+    js = Javascript('''
+        async function takePhoto(quality) {
+            const div = document.createElement('div');
+            document.body.appendChild(div);
+
+            const video = document.createElement('video');
+            div.appendChild(video);
+
+            const stream = await navigator.mediaDevices.getUserMedia({video: true});
+            video.srcObject = stream;
+            await new Promise((resolve) => video.onloadedmetadata = resolve);
+            video.play();
+
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+
+            stream.getTracks().forEach(track => track.stop());
+            div.remove();
+
+            return canvas.toDataURL('image/jpeg', quality);
+        }
+    ''')
+    display(js)
+    data = eval_js('takePhoto({})'.format(quality))
+    binary = b64decode(data.split(',')[1])
+    with open(filename, 'wb') as f:
+        f.write(binary)
+    return filename
+
+# Quotes
+happy_quotes = [
+    "Happiness is not something ready-made. It comes from your own actions. – Dalai Lama",
+    "The happiest people don't have the best of everything, they make the best of everything. – Unknown",
+    "Happiness is when what you think, what you say, and what you do are in harmony. – Mahatma Gandhi",
+    "The purpose of our lives is to be happy. – Dalai Lama",
+    "Happiness is a warm puppy. – Charles M. Schulz"
+]
+
+# pytube
+def fetch_youtube_playlist(mood):
+    mood_to_query = {
+        "happy": ["happy music playlist", "uplifting songs playlist"],
+        "sad": ["sad music playlist", "emotional songs playlist"],
+        "angry": ["intense music playlist", "energetic music playlist"],
+        "neutral": ["relaxing music playlist", "calm music playlist"],
+        "surprise": ["upbeat music playlist", "exciting music playlist"],
+        "fear": ["calm music playlist", "soothing music playlist"],
+        "disgust": ["dark music playlist", "moody music playlist"]
+    }
+
+    queries = mood_to_query.get(mood, ["relaxing music playlist"])
+
+    for query in queries:
+        try:
+            search = Search(query)
+            if search.results:
+                return search.results[0].watch_url
+        except Exception as e:
+            print(f"Error searching for '{query}': {e}")
+    return None
+
+def analyze_emotions():
+    emotions = []
+    for i in range(5):
+        print(f"Capturing image {i+1} in 2 seconds...")
+        time.sleep(1)
+        print("Capturing image in 1 second...")
+        time.sleep(1)
+        image_path = take_photo(f'photo_{i}.jpg')
+        img = cv2.imread(image_path)
+
+        try:
+            result = DeepFace.analyze(img, actions=['emotion'])
+            detected_emotion = result[0]['dominant_emotion']
+            emotions.append(detected_emotion)
+
+            cv2.putText(img, f"Emotion: {detected_emotion}", (20, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+            cv2_imshow(img)
+            print(f"Detected Emotion {i+1}: {detected_emotion}")
+
+        except Exception as e:
+            print("Error:", e)
+
+        time.sleep(1)
+
+    if emotions:
+        most_frequent_emotion = mode(emotions)
+        print(f"\nMost Frequent Emotion: {most_frequent_emotion}")
+
+        if (1==1):
+            random_quote = random.choice(happy_quotes)
+            print("\nHere's a quote for your happiness:")
+            print(random_quote)
+
+        playlist_link = fetch_youtube_playlist(most_frequent_emotion)
+        if playlist_link:
+            print(f"\nHere's a {most_frequent_emotion} music playlist for you: {playlist_link}")
+            display(HTML(f'<a href="{playlist_link}" target="_blank">Open Playlist in YouTube</a>'))
+
+        else:
+            print("\nNo playlist found for this mood.")
+
+        emotion_counts = Counter(emotions)
+        labels = list(emotion_counts.keys())
+        sizes = list(emotion_counts.values())
+
+        plt.figure(figsize=(8, 6))
+        plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140, colors=['gold', 'lightcoral', 'lightskyblue', 'lightgreen', 'plum', 'palegreen', 'lightsalmon'])
+        plt.title('Distribution of Detected Emotions')
+        plt.axis('equal')
+        plt.show()
+
+    else:
+        print("No emotions detected.")
+
+# analyze button
+analyze_button = widgets.Button(description="Analyze Emotions")
+output = widgets.Output()
+
+def on_analyze_button_click(b):
+    with output:
+        clear_output()
+        analyze_emotions()
+
+analyze_button.on_click(on_analyze_button_click)
+display(analyze_button, output)
